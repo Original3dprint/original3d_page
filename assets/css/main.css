@@ -266,16 +266,19 @@ input, select, textarea {
 		padding: 0.5em 0 0.5em 2em;
 	}
 
-	code {
-		background: rgba(144, 144, 144, 0.075);
-		border-radius: 4px;
-		border: solid 1px #c9c9c9;
-		font-family: "Courier New", monospace;
-		font-size: 0.9em;
-		margin: 0 0.25em;
-		padding: 0.25em 0.65em;
-	}
-
+	:root {
+  --color-primario: #4B0082;
+  --color-acento: #FFD700;
+  --fondo: #f8f8f8;
+  --texto: #2c2c2c;
+}
+body {
+    background: var(--fondo);
+    color: var(--texto);
+}
+a {
+    color: var(--color-primario);
+}
 	pre {
 		-webkit-overflow-scrolling: touch;
 		font-family: "Courier New", monospace;
