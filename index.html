@@ -1,620 +1,517 @@
-import React, { useState, useEffect } from 'react';
-import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
-import { 
-    getFirestore, 
-    collection, 
-    onSnapshot, 
-    doc, 
-    addDoc, 
-    updateDoc, 
-    Timestamp, 
-    query
-} from 'firebase/firestore';
-import { ArrowLeft, ArrowRight, Calendar, Plus, X, GripVertical, Sparkles, Clipboard } from 'lucide-react';
-
-// --- Firebase Configuration ---
-// These global variables are provided by the environment.
-const firebaseConfig = typeof __firebase_config !== 'undefined' 
-    ? JSON.parse(__firebase_config) 
-    : { apiKey: "your-api-key", authDomain: "your-auth-domain", projectId: "your-project-id" }; // Fallback for local dev
-
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'sievert-control-default';
-
-// --- Gemini API Helper ---
-const callGeminiAPI = async (prompt) => {
-    const apiKey = ""; // The environment will provide the key
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
-    
-    const payload = {
-        contents: [{
-            role: "user",
-            parts: [{ text: prompt }]
-        }]
-    };
-
-    try {
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        });
-
-        if (!response.ok) {
-            const errorBody = await response.text();
-            throw new Error(`API request failed with status ${response.status}: ${errorBody}`);
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sievert Control</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
         }
-
-        const result = await response.json();
-        if (result.candidates && result.candidates.length > 0 &&
-            result.candidates[0].content && result.candidates[0].content.parts &&
-            result.candidates[0].content.parts.length > 0) {
-            return result.candidates[0].content.parts[0].text;
-        } else {
-            console.warn("Unexpected API response structure:", result);
-            return "No se pudo obtener una respuesta válida de la IA.";
+        .modal {
+            transition: opacity 0.3s ease;
         }
-    } catch (error) {
-        console.error("Error calling Gemini API:", error);
-        throw error;
-    }
-};
-
-
-// --- Main App Component ---
-export default function App() {
-    const [view, setView] = useState('kanban'); // 'kanban' or 'agenda'
-    const [instruments, setInstruments] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState(null);
-    const [isModalOpen, setIsModalOpen] = useState(false);
-    const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
-    const [selectedInstrument, setSelectedInstrument] = useState(null);
-    
-    // Firebase state
-    const [db, setDb] = useState(null);
-    const [auth, setAuth] = useState(null);
-    const [userId, setUserId] = useState(null);
-
-    // Initialize Firebase and set up auth listener
-    useEffect(() => {
-        try {
-            const app = initializeApp(firebaseConfig);
-            const firestoreDb = getFirestore(app);
-            const firebaseAuth = getAuth(app);
-            setDb(firestoreDb);
-            setAuth(firebaseAuth);
-
-            const authUnsubscribe = onAuthStateChanged(firebaseAuth, async (user) => {
-                if (user) {
-                    setUserId(user.uid);
-                } else {
-                    try {
-                        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                            await signInWithCustomToken(firebaseAuth, __initial_auth_token);
-                        } else {
-                            await signInAnonymously(firebaseAuth);
-                        }
-                    } catch (authError) {
-                        console.error("Authentication error:", authError);
-                        setError("Error de autenticación. No se pueden cargar los datos.");
-                    }
-                }
-            });
-            return () => authUnsubscribe();
-        } catch (e) {
-            console.error("Error initializing Firebase:", e);
-            setError("Error al inicializar la aplicación. Verifique la configuración.");
-            setLoading(false);
+        .kanban-column {
+            min-height: 200px;
         }
-    }, []);
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800">
 
-    // Subscribe to instrument data from Firestore
-    useEffect(() => {
-        if (!db || !userId) return;
-
-        setLoading(true);
-        const instrumentsCollectionPath = `/artifacts/${appId}/public/data/instruments`;
-        const q = query(collection(db, instrumentsCollectionPath));
-
-        const unsubscribe = onSnapshot(q, (querySnapshot) => {
-            const instrumentsData = [];
-            querySnapshot.forEach((doc) => {
-                instrumentsData.push({ id: doc.id, ...doc.data() });
-            });
-            setInstruments(instrumentsData);
-            setLoading(false);
-        }, (err) => {
-            console.error("Error fetching data:", err);
-            setError("No se pudieron cargar los datos. Verifique la conexión y los permisos.");
-            setLoading(false);
-        });
-
-        return () => unsubscribe();
-    }, [db, userId]);
-
-    const handleUpdateInstrumentStatus = async (instrumentId, newStatus) => {
-        if (!db) return;
-        const instrumentRef = doc(db, `/artifacts/${appId}/public/data/instruments`, instrumentId);
-        const instrument = instruments.find(inst => inst.id === instrumentId);
-        
-        const newHistoryEntry = {
-            status: newStatus,
-            date: Timestamp.now(),
-            user: userId || 'anonymous'
-        };
-        
-        const updatedHistory = instrument.history ? [...instrument.history, newHistoryEntry] : [newHistoryEntry];
-
-        try {
-            await updateDoc(instrumentRef, { 
-                status: newStatus,
-                lastUpdate: Timestamp.now(),
-                history: updatedHistory
-            });
-        } catch (err) {
-            console.error("Error updating instrument:", err);
-            setError("Error al actualizar el instrumento.");
-        }
-    };
-
-    const handleAddInstrument = async (instrumentData) => {
-        if (!db) return;
-        const newInstrument = {
-            ...instrumentData,
-            receptionDate: Timestamp.now(),
-            lastUpdate: Timestamp.now(),
-            status: 'En Recepción',
-            history: [{
-                status: 'En Recepción',
-                date: Timestamp.now(),
-                user: userId || 'anonymous'
-            }]
-        };
-        try {
-            await addDoc(collection(db, `/artifacts/${appId}/public/data/instruments`), newInstrument);
-            setIsModalOpen(false);
-        } catch (err) {
-            console.error("Error adding instrument:", err);
-            setError("Error al añadir el nuevo instrumento.");
-        }
-    };
-    
-    const handleSelectInstrument = (instrument) => {
-        setSelectedInstrument(instrument);
-        setIsDetailModalOpen(true);
-    };
-
-    return (
-        <div className="bg-gray-100 min-h-screen font-sans text-gray-800">
-            <Header onAddInstrument={() => setIsModalOpen(true)} onViewChange={setView} currentView={view} />
-            
-            <main className="p-4 md:p-6">
-                {loading && <p className="text-center text-lg">Cargando datos del laboratorio...</p>}
-                {error && <p className="text-center text-red-500 bg-red-100 p-3 rounded-lg">{error}</p>}
-                
-                {!loading && !error && (
-                    <>
-                        {view === 'kanban' ? (
-                            <KanbanBoard 
-                                instruments={instruments} 
-                                onUpdateStatus={handleUpdateInstrumentStatus}
-                                onCardClick={handleSelectInstrument}
-                            />
-                        ) : (
-                            <AgendaView instruments={instruments} onCardClick={handleSelectInstrument} />
-                        )}
-                    </>
-                )}
-            </main>
-
-            {isModalOpen && (
-                <AddInstrumentModal 
-                    onClose={() => setIsModalOpen(false)} 
-                    onAdd={handleAddInstrument} 
-                    instruments={instruments}
-                />
-            )}
-            
-            {isDetailModalOpen && selectedInstrument && (
-                <InstrumentDetailModal
-                    instrument={selectedInstrument}
-                    onClose={() => setIsDetailModalOpen(false)}
-                />
-            )}
-        </div>
-    );
-}
-
-// --- Header Component ---
-const Header = ({ onAddInstrument, onViewChange, currentView }) => (
-    <header className="bg-white shadow-md p-4 flex justify-between items-center">
-        <div className="flex items-center space-x-3">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-blue-600" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.414-1.414L11 10.586V6z" clipRule="evenodd" />
+    <!-- Header -->
+    <header class="bg-white shadow-md p-4 flex justify-between items-center sticky top-0 z-40">
+        <div class="flex items-center space-x-3">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-blue-600" viewBox="0 0 20 20" fill="currentColor">
+              <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.414-1.414L11 10.586V6z" clip-rule="evenodd" />
             </svg>
-            <h1 className="text-xl md:text-2xl font-bold text-gray-800">Sievert Control</h1>
+            <h1 class="text-xl md:text-2xl font-bold text-gray-800">Sievert Control</h1>
         </div>
-        <div className="flex items-center space-x-2 md:space-x-4">
-            <div className="flex bg-gray-200 rounded-lg p-1">
-                <button 
-                    onClick={() => onViewChange('kanban')}
-                    className={`px-3 py-1 text-sm font-medium rounded-md transition-colors ${currentView === 'kanban' ? 'bg-blue-600 text-white shadow' : 'text-gray-600 hover:bg-gray-300'}`}
-                >
+        <div class="flex items-center space-x-2 md:space-x-4">
+            <div class="flex bg-gray-200 rounded-lg p-1">
+                <button id="view-kanban-btn" class="px-3 py-1 text-sm font-medium rounded-md transition-colors bg-blue-600 text-white shadow">
                     Kanban
                 </button>
-                <button 
-                    onClick={() => onViewChange('agenda')}
-                    className={`px-3 py-1 text-sm font-medium rounded-md transition-colors ${currentView === 'agenda' ? 'bg-blue-600 text-white shadow' : 'text-gray-600 hover:bg-gray-300'}`}
-                >
+                <button id="view-agenda-btn" class="px-3 py-1 text-sm font-medium rounded-md transition-colors text-gray-600 hover:bg-gray-300">
                     Agenda
                 </button>
             </div>
-            <button 
-                onClick={onAddInstrument} 
-                className="flex items-center bg-green-500 text-white px-3 py-2 rounded-lg hover:bg-green-600 transition-colors shadow"
-            >
-                <Plus size={20} className="mr-1" />
-                <span className="hidden md:inline">Añadir Instrumento</span>
+            <button id="add-instrument-btn" class="flex items-center bg-green-500 text-white px-3 py-2 rounded-lg hover:bg-green-600 transition-colors shadow">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-1" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd" /></svg>
+                <span class="hidden md:inline">Añadir Instrumento</span>
             </button>
         </div>
     </header>
-);
 
-// --- Kanban Board Component ---
-const KANBAN_COLUMNS = [
-    { id: 'En Recepción', title: 'En Recepción' },
-    { id: 'En Proceso', title: 'En Proceso' },
-    { id: 'Calibrado', title: 'Calibrado' },
-    { id: 'Listo para Despacho', title: 'Listo para Despacho' },
-    { id: 'Despachado', title: 'Despachado' },
-];
+    <!-- Main Content -->
+    <main id="main-content" class="p-4 md:p-6">
+        <!-- Content will be rendered here by JavaScript -->
+    </main>
 
-const KanbanBoard = ({ instruments, onUpdateStatus, onCardClick }) => {
-    const [draggedItemId, setDraggedItemId] = useState(null);
-
-    const handleDragStart = (e, id) => {
-        setDraggedItemId(id);
-    };
-
-    const handleDragOver = (e) => {
-        e.preventDefault();
-    };
-
-    const handleDrop = (e, newStatus) => {
-        e.preventDefault();
-        if (draggedItemId) {
-            onUpdateStatus(draggedItemId, newStatus);
-            setDraggedItemId(null);
-        }
-    };
-
-    return (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-            {KANBAN_COLUMNS.map(column => (
-                <div 
-                    key={column.id}
-                    className="bg-gray-200 rounded-lg p-3"
-                    onDragOver={handleDragOver}
-                    onDrop={(e) => handleDrop(e, column.id)}
-                >
-                    <h2 className="font-bold text-lg mb-4 text-gray-700 text-center">{column.title}</h2>
-                    <div className="space-y-3 min-h-[200px]">
-                        {instruments
-                            .filter(inst => inst.status === column.id)
-                            .map(inst => (
-                                <InstrumentCard 
-                                    key={inst.id} 
-                                    instrument={inst} 
-                                    onDragStart={(e) => handleDragStart(e, inst.id)}
-                                    onClick={() => onCardClick(inst)}
-                                />
-                            ))
-                        }
-                    </div>
-                </div>
-            ))}
-        </div>
-    );
-};
-
-// --- Instrument Card Component ---
-const InstrumentCard = ({ instrument, onDragStart, onClick }) => (
-    <div
-        draggable
-        onDragStart={onDragStart}
-        onClick={onClick}
-        className="bg-white p-3 rounded-lg shadow-sm cursor-pointer hover:shadow-md transition-shadow border-l-4 border-blue-500 flex items-start"
-    >
-        <div className="flex-grow">
-            <p className="font-semibold text-gray-800">{instrument.instrumentId}</p>
-            <p className="text-sm text-gray-600">{instrument.clientName}</p>
-        </div>
-        <div className="text-gray-400 cursor-grab">
-            <GripVertical size={20} />
-        </div>
-    </div>
-);
-
-// --- Agenda View Component ---
-const AgendaView = ({ instruments, onCardClick }) => {
-    const [currentDate, setCurrentDate] = useState(new Date());
-
-    const startOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
-    const endOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
-    const startDay = startOfMonth.getDay(); // 0 for Sunday, 1 for Monday...
-
-    const daysInMonth = [];
-    for (let i = 1; i <= endOfMonth.getDate(); i++) {
-        daysInMonth.push(new Date(currentDate.getFullYear(), currentDate.getMonth(), i));
-    }
-
-    const prevMonth = () => {
-        setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
-    };
-
-    const nextMonth = () => {
-        setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
-    };
-
-    const getEventsForDay = (day) => {
-        return instruments.filter(inst => {
-            const collectionDate = inst.scheduledCollectionDate?.toDate();
-            const deliveryDate = inst.promisedDeliveryDate?.toDate();
-            const isCollection = collectionDate && collectionDate.toDateString() === day.toDateString();
-            const isDelivery = deliveryDate && deliveryDate.toDateString() === day.toDateString();
-            return isCollection || isDelivery;
-        });
-    };
-    
-    const weekDays = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
-
-    return (
-        <div className="bg-white p-4 rounded-lg shadow-lg">
-            <div className="flex justify-between items-center mb-4">
-                <button onClick={prevMonth} className="p-2 rounded-full hover:bg-gray-200"><ArrowLeft /></button>
-                <h2 className="text-xl font-bold">
-                    {currentDate.toLocaleString('es-ES', { month: 'long', year: 'numeric' }).replace(/^\w/, c => c.toUpperCase())}
-                </h2>
-                <button onClick={nextMonth} className="p-2 rounded-full hover:bg-gray-200"><ArrowRight /></button>
-            </div>
-            <div className="grid grid-cols-7 gap-1 text-center font-semibold text-gray-600">
-                {weekDays.map(day => <div key={day} className="py-2">{day}</div>)}
-            </div>
-            <div className="grid grid-cols-7 gap-1">
-                {Array(startDay).fill(null).map((_, index) => <div key={`empty-${index}`} className="border rounded-md h-28"></div>)}
-                {daysInMonth.map(day => {
-                    const events = getEventsForDay(day);
-                    const isToday = day.toDateString() === new Date().toDateString();
-                    return (
-                        <div key={day.toString()} className={`border rounded-md h-32 p-1 overflow-y-auto ${isToday ? 'bg-blue-50' : ''}`}>
-                            <div className={`font-bold ${isToday ? 'text-blue-600' : 'text-gray-700'}`}>{day.getDate()}</div>
-                            <div className="space-y-1 mt-1">
-                                {events.map(event => {
-                                    const isCollection = event.scheduledCollectionDate?.toDate().toDateString() === day.toDateString();
-                                    return (
-                                        <div 
-                                            key={event.id} 
-                                            onClick={() => onCardClick(event)}
-                                            className={`text-xs p-1 rounded cursor-pointer ${isCollection ? 'bg-yellow-200 text-yellow-800' : 'bg-green-200 text-green-800'}`}
-                                        >
-                                            {isCollection ? 'Recoger: ' : 'Entregar: '} 
-                                            {event.instrumentId}
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    );
-                })}
-            </div>
-        </div>
-    );
-};
-
-// --- Modal Components ---
-const Modal = ({ children, onClose }) => (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50 p-4">
-        <div className="bg-white rounded-lg shadow-2xl p-6 w-full max-w-md relative max-h-full overflow-y-auto">
-            <button onClick={onClose} className="absolute top-3 right-3 text-gray-500 hover:text-gray-800 z-10">
-                <X size={24} />
+    <!-- Add Instrument Modal -->
+    <div id="add-instrument-modal" class="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50 p-4 hidden">
+        <div class="bg-white rounded-lg shadow-2xl p-6 w-full max-w-md relative max-h-full overflow-y-auto">
+            <button id="close-add-modal-btn" class="absolute top-3 right-3 text-gray-500 hover:text-gray-800 z-10">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
             </button>
-            {children}
-        </div>
-    </div>
-);
-
-const AddInstrumentModal = ({ onClose, onAdd, instruments }) => {
-    const [instrumentId, setInstrumentId] = useState('');
-    const [clientName, setClientName] = useState('');
-    const [scheduledCollectionDate, setScheduledCollectionDate] = useState('');
-    const [promisedDeliveryDate, setPromisedDeliveryDate] = useState('');
-    const [isSuggesting, setIsSuggesting] = useState(false);
-
-    const handleSubmit = (e) => {
-        e.preventDefault();
-        if (!instrumentId || !clientName) {
-            alert("El ID del instrumento y el nombre del cliente son obligatorios.");
-            return;
-        }
-        onAdd({
-            instrumentId,
-            clientName,
-            scheduledCollectionDate: scheduledCollectionDate ? Timestamp.fromDate(new Date(scheduledCollectionDate)) : null,
-            promisedDeliveryDate: promisedDeliveryDate ? Timestamp.fromDate(new Date(promisedDeliveryDate)) : null,
-        });
-    };
-    
-    const handleSuggestDate = async () => {
-        setIsSuggesting(true);
-        const enProcesoCount = instruments.filter(i => i.status === 'En Proceso').length;
-        const enRecepcionCount = instruments.filter(i => i.status === 'En Recepción').length;
-        const calibradoCount = instruments.filter(i => i.status === 'Calibrado').length;
-
-        const prompt = `
-            Eres un asistente de planificación para un laboratorio de calibración dosimétrica en Medellín, Colombia.
-            La fecha actual es: ${new Date().toLocaleDateString('es-CO')}.
-            La carga de trabajo actual es:
-            - Instrumentos 'En Proceso': ${enProcesoCount}
-            - Instrumentos 'En Recepción': ${enRecepcionCount}
-            - Instrumentos 'Calibrado' (esperando despacho): ${calibradoCount}
-
-            Considera un tiempo de calibración promedio de 3 días hábiles por instrumento y un tiempo administrativo de 2 días hábiles.
-            Basado en la carga de trabajo actual, sugiere una fecha de entrega prometida realista para un nuevo instrumento que ingresa hoy.
-            Responde únicamente con la fecha en formato YYYY-MM-DD.
-        `;
-
-        try {
-            const suggestedDate = await callGeminiAPI(prompt);
-            // Basic validation for the date format
-            if (/^\d{4}-\d{2}-\d{2}$/.test(suggestedDate.trim())) {
-                setPromisedDeliveryDate(suggestedDate.trim());
-            } else {
-                alert("La IA devolvió un formato de fecha no válido. Por favor, inténtalo de nuevo.");
-            }
-        } catch (error) {
-            alert("Error al contactar al asistente de IA. Por favor, inténtalo más tarde.");
-        } finally {
-            setIsSuggesting(false);
-        }
-    };
-
-    return (
-        <Modal onClose={onClose}>
-            <h2 className="text-2xl font-bold mb-4">Añadir Nuevo Instrumento</h2>
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <h2 class="text-2xl font-bold mb-4">Añadir Nuevo Instrumento</h2>
+            <form id="add-instrument-form" class="space-y-4">
                 <div>
-                    <label className="block text-sm font-medium text-gray-700">ID del Instrumento</label>
-                    <input type="text" value={instrumentId} onChange={e => setInstrumentId(e.target.value)} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2" required />
+                    <label class="block text-sm font-medium text-gray-700">ID del Instrumento</label>
+                    <input type="text" id="instrument-id-input" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2" required />
                 </div>
                 <div>
-                    <label className="block text-sm font-medium text-gray-700">Nombre del Cliente</label>
-                    <input type="text" value={clientName} onChange={e => setClientName(e.target.value)} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2" required />
+                    <label class="block text-sm font-medium text-gray-700">Nombre del Cliente</label>
+                    <input type="text" id="client-name-input" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2" required />
                 </div>
                 <div>
-                    <label className="block text-sm font-medium text-gray-700">Fecha Programada de Recolección</label>
-                    <input type="date" value={scheduledCollectionDate} onChange={e => setScheduledCollectionDate(e.target.value)} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2" />
+                    <label class="block text-sm font-medium text-gray-700">Fecha Programada de Recolección</label>
+                    <input type="date" id="collection-date-input" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2" />
                 </div>
                 <div>
-                    <label className="block text-sm font-medium text-gray-700">Fecha Prometida de Entrega</label>
-                    <div className="flex items-center space-x-2">
-                        <input type="date" value={promisedDeliveryDate} onChange={e => setPromisedDeliveryDate(e.target.value)} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2" />
-                        <button type="button" onClick={handleSuggestDate} disabled={isSuggesting} className="mt-1 flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-purple-600 hover:bg-purple-700 disabled:bg-purple-300">
-                            <Sparkles size={16} className="mr-1"/>
-                            {isSuggesting ? '...' : 'Sugerir'}
+                    <label class="block text-sm font-medium text-gray-700">Fecha Prometida de Entrega</label>
+                    <div class="flex items-center space-x-2">
+                        <input type="date" id="delivery-date-input" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2" />
+                        <button type="button" id="suggest-date-btn" class="mt-1 flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-purple-600 hover:bg-purple-700 disabled:bg-purple-300">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1" viewBox="0 0 20 20" fill="currentColor"><path d="M5 4a2 2 0 012-2h6a2 2 0 012 2v1h-2V4H7v1H5V4zM5 7h10v9a2 2 0 01-2 2H7a2 2 0 01-2-2V7z" /></svg>
+                            <span id="suggest-date-btn-text">Sugerir</span>
                         </button>
                     </div>
                 </div>
-                <div className="flex justify-end space-x-3 pt-4">
-                    <button type="button" onClick={onClose} className="bg-gray-200 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-300">Cancelar</button>
-                    <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">Añadir</button>
+                <div class="flex justify-end space-x-3 pt-4">
+                    <button type="button" id="cancel-add-modal-btn" class="bg-gray-200 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-300">Cancelar</button>
+                    <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">Añadir</button>
                 </div>
             </form>
-        </Modal>
-    );
-};
+        </div>
+    </div>
 
-const InstrumentDetailModal = ({ instrument, onClose }) => {
-    const [isGenerating, setIsGenerating] = useState(false);
-    const [generatedEmail, setGeneratedEmail] = useState('');
-    const [copySuccess, setCopySuccess] = useState('');
+    <!-- Instrument Detail Modal -->
+    <div id="detail-modal" class="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50 p-4 hidden">
+        <div id="detail-modal-content" class="bg-white rounded-lg shadow-2xl p-6 w-full max-w-md relative max-h-full overflow-y-auto">
+            <!-- Details will be rendered here -->
+        </div>
+    </div>
 
-    const formatDate = (timestamp) => {
-        if (!timestamp) return 'N/A';
-        return timestamp.toDate().toLocaleString('es-CO', { 
-            year: 'numeric', month: 'long', day: 'numeric', 
-            hour: '2-digit', minute: '2-digit' 
-        });
-    };
-    
-    const handleGenerateEmail = async () => {
-        setIsGenerating(true);
-        setGeneratedEmail('');
-        const prompt = `
-            Actúa como el asistente de comunicaciones del Laboratorio de Calibración Dosimétrica Sievert en Medellín.
-            Genera un correo electrónico corto, profesional y amigable en español para notificar a un cliente sobre el estado de su equipo.
+    <!-- Firebase and App Logic -->
+    <script type="module">
+        // Firebase SDK imports
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, onSnapshot, doc, addDoc, updateDoc, Timestamp, query } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-            Datos del Equipo:
-            - Cliente: ${instrument.clientName}
-            - ID del Instrumento: ${instrument.instrumentId}
-            - Estado Actual: ${instrument.status}
+        // --- Configuration ---
+        const firebaseConfig = typeof __firebase_config !== 'undefined' 
+            ? JSON.parse(__firebase_config) 
+            : { apiKey: "your-api-key", authDomain: "your-auth-domain", projectId: "your-project-id" };
 
-            El correo debe:
-            1. Tener un asunto claro.
-            2. Saludar al cliente por su nombre.
-            3. Informar de manera concisa el nuevo estado del equipo.
-            4. Si el estado es "Listo para Despacho", mencionar que pronto coordinarán la entrega.
-            5. Si el estado es "Calibrado", mencionar que el certificado se está procesando.
-            6. Terminar con una despedida cordial.
-            
-            No incluyas placeholders como "[Nombre del Laboratorio]" o "[Tu Nombre]", asume que la firma ya existe.
-        `;
-        try {
-            const emailText = await callGeminiAPI(prompt);
-            setGeneratedEmail(emailText);
-        } catch (error) {
-            setGeneratedEmail("Error al generar el correo. Por favor, inténtalo de nuevo.");
-        } finally {
-            setIsGenerating(false);
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'sievert-control-default';
+        
+        // --- Global State ---
+        let db;
+        let auth;
+        let userId;
+        let instruments = [];
+        let currentView = 'kanban'; // 'kanban' or 'agenda'
+        let currentDate = new Date();
+        let draggedItemId = null;
+
+        // --- DOM Elements ---
+        const mainContent = document.getElementById('main-content');
+        const viewKanbanBtn = document.getElementById('view-kanban-btn');
+        const viewAgendaBtn = document.getElementById('view-agenda-btn');
+        const addInstrumentBtn = document.getElementById('add-instrument-btn');
+        const addInstrumentModal = document.getElementById('add-instrument-modal');
+        const closeAddModalBtn = document.getElementById('close-add-modal-btn');
+        const cancelAddModalBtn = document.getElementById('cancel-add-modal-btn');
+        const addInstrumentForm = document.getElementById('add-instrument-form');
+        const detailModal = document.getElementById('detail-modal');
+        const suggestDateBtn = document.getElementById('suggest-date-btn');
+
+        // --- Gemini API Helper ---
+        async function callGeminiAPI(prompt) {
+            const apiKey = ""; // The environment will provide the key
+            const url = https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey};
+            const payload = { contents: [{ role: "user", parts: [{ text: prompt }] }] };
+
+            try {
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                if (!response.ok) throw new Error(API request failed with status ${response.status});
+                const result = await response.json();
+                if (result.candidates && result.candidates[0]?.content?.parts[0]) {
+                    return result.candidates[0].content.parts[0].text;
+                }
+                return "No se pudo obtener una respuesta válida de la IA.";
+            } catch (error) {
+                console.error("Error calling Gemini API:", error);
+                throw error;
+            }
         }
-    };
 
-    const handleCopyToClipboard = () => {
-        const textArea = document.createElement("textarea");
-        textArea.value = generatedEmail;
-        document.body.appendChild(textArea);
-        textArea.select();
-        try {
-            document.execCommand('copy');
-            setCopySuccess('¡Copiado!');
-            setTimeout(() => setCopySuccess(''), 2000);
-        } catch (err) {
-            setCopySuccess('Error al copiar');
+        // --- Rendering Functions ---
+        function render() {
+            mainContent.innerHTML = '<p class="text-center text-lg">Cargando...</p>';
+            if (currentView === 'kanban') {
+                renderKanbanBoard();
+            } else {
+                renderAgendaView();
+            }
         }
-        document.body.removeChild(textArea);
-    };
-    
-    return (
-        <Modal onClose={onClose}>
-            <h2 className="text-2xl font-bold mb-2">{instrument.instrumentId}</h2>
-            <p className="text-lg text-gray-600 mb-4">{instrument.clientName}</p>
+
+        function renderKanbanBoard() {
+            const KANBAN_COLUMNS = [
+                { id: 'En Recepción', title: 'En Recepción' },
+                { id: 'En Proceso', title: 'En Proceso' },
+                { id: 'Calibrado', title: 'Calibrado' },
+                { id: 'Listo para Despacho', title: 'Listo para Despacho' },
+                { id: 'Despachado', title: 'Despachado' },
+            ];
+
+            let boardHTML = '<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">';
+            KANBAN_COLUMNS.forEach(column => {
+                const columnInstruments = instruments.filter(inst => inst.status === column.id);
+                boardHTML += `
+                    <div class="bg-gray-200 rounded-lg p-3 kanban-column" data-status="${column.id}">
+                        <h2 class="font-bold text-lg mb-4 text-gray-700 text-center">${column.title}</h2>
+                        <div class="space-y-3">
+                            ${columnInstruments.map(inst => `
+                                <div class="bg-white p-3 rounded-lg shadow-sm cursor-pointer hover:shadow-md transition-shadow border-l-4 border-blue-500 flex items-start" draggable="true" data-id="${inst.id}">
+                                    <div class="flex-grow">
+                                        <p class="font-semibold text-gray-800">${inst.instrumentId}</p>
+                                        <p class="text-sm text-gray-600">${inst.clientName}</p>
+                                    </div>
+                                    <div class="text-gray-400 cursor-grab">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" /></svg>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+            });
+            boardHTML += '</div>';
+            mainContent.innerHTML = boardHTML;
+            addKanbanEventListeners();
+        }
+
+        function renderAgendaView() {
+            const startOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
+            const endOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
+            const startDay = startOfMonth.getDay();
+            const daysInMonth = endOfMonth.getDate();
+            const weekDays = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+
+            let agendaHTML = `
+                <div class="bg-white p-4 rounded-lg shadow-lg">
+                    <div class="flex justify-between items-center mb-4">
+                        <button id="prev-month-btn" class="p-2 rounded-full hover:bg-gray-200">&lt;</button>
+                        <h2 class="text-xl font-bold">${currentDate.toLocaleString('es-ES', { month: 'long', year: 'numeric' }).replace(/^\w/, c => c.toUpperCase())}</h2>
+                        <button id="next-month-btn" class="p-2 rounded-full hover:bg-gray-200">&gt;</button>
+                    </div>
+                    <div class="grid grid-cols-7 gap-1 text-center font-semibold text-gray-600">
+                        ${weekDays.map(day => <div class="py-2">${day}</div>).join('')}
+                    </div>
+                    <div class="grid grid-cols-7 gap-1">
+            `;
             
-            <div className="space-y-3 mb-6">
-                <p><strong>Estado Actual:</strong> <span className="font-semibold text-blue-600">{instrument.status}</span></p>
-                <p><strong>Fecha de Recepción:</strong> {formatDate(instrument.receptionDate)}</p>
-                <p><strong>Última Actualización:</strong> {formatDate(instrument.lastUpdate)}</p>
-            </div>
+            for (let i = 0; i < startDay; i++) {
+                agendaHTML += '<div class="border rounded-md h-28"></div>';
+            }
+
+            for (let i = 1; i <= daysInMonth; i++) {
+                const day = new Date(currentDate.getFullYear(), currentDate.getMonth(), i);
+                const isToday = day.toDateString() === new Date().toDateString();
+                const events = instruments.filter(inst => {
+                    const collectionDate = inst.scheduledCollectionDate?.toDate();
+                    const deliveryDate = inst.promisedDeliveryDate?.toDate();
+                    return (collectionDate && collectionDate.toDateString() === day.toDateString()) || (deliveryDate && deliveryDate.toDateString() === day.toDateString());
+                });
+
+                agendaHTML += `
+                    <div class="border rounded-md h-32 p-1 overflow-y-auto ${isToday ? 'bg-blue-50' : ''}">
+                        <div class="font-bold ${isToday ? 'text-blue-600' : 'text-gray-700'}">${i}</div>
+                        <div class="space-y-1 mt-1">
+                            ${events.map(event => {
+                                const isCollection = event.scheduledCollectionDate?.toDate().toDateString() === day.toDateString();
+                                return `
+                                    <div data-id="${event.id}" class="text-xs p-1 rounded cursor-pointer ${isCollection ? 'bg-yellow-200 text-yellow-800' : 'bg-green-200 text-green-800'}">
+                                        ${isCollection ? 'Recoger: ' : 'Entregar: '} ${event.instrumentId}
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+
+            agendaHTML += '</div></div>';
+            mainContent.innerHTML = agendaHTML;
+            addAgendaEventListeners();
+        }
+        
+        // --- Modal Rendering ---
+        function renderDetailModal(instrument) {
+            const formatDate = (timestamp) => {
+                if (!timestamp) return 'N/A';
+                return timestamp.toDate().toLocaleString('es-CO', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+            };
             
-            <div className="bg-gray-50 p-4 rounded-lg">
-                <button 
-                    onClick={handleGenerateEmail} 
-                    disabled={isGenerating}
-                    className="w-full flex items-center justify-center bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors shadow disabled:bg-indigo-300"
-                >
-                    <Sparkles size={20} className="mr-2" />
-                    {isGenerating ? 'Generando notificación...' : '✨ Generar Notificación al Cliente'}
+            const historyHTML = instrument.history ? instrument.history.slice().reverse().map(entry => 
+                <li class="text-sm"><span class="font-semibold">${entry.status}</span> - ${formatDate(entry.date)}</li>
+            ).join('') : '';
+
+            const contentHTML = `
+                <button id="close-detail-modal-btn" class="absolute top-3 right-3 text-gray-500 hover:text-gray-800 z-10">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
                 </button>
-                {generatedEmail && (
-                    <div className="mt-4">
-                        <textarea 
-                            readOnly
-                            value={generatedEmail}
-                            className="w-full h-48 p-2 border rounded-md bg-white font-mono text-sm"
-                        />
-                        <button
-                            onClick={handleCopyToClipboard}
-                            className="mt-2 flex items-center justify-center w-full bg-gray-600 text-white px-3 py-1.5 rounded-md hover:bg-gray-700 text-sm"
-                        >
-                            <Clipboard size={16} className="mr-2" />
-                            {copySuccess || 'Copiar al Portapapeles'}
+                <h2 class="text-2xl font-bold mb-2">${instrument.instrumentId}</h2>
+                <p class="text-lg text-gray-600 mb-4">${instrument.clientName}</p>
+                <div class="space-y-3 mb-6">
+                    <p><strong>Estado Actual:</strong> <span class="font-semibold text-blue-600">${instrument.status}</span></p>
+                    <p><strong>Fecha de Recepción:</strong> ${formatDate(instrument.receptionDate)}</p>
+                    <p><strong>Última Actualización:</strong> ${formatDate(instrument.lastUpdate)}</p>
+                </div>
+                <div class="bg-gray-50 p-4 rounded-lg">
+                    <button id="generate-email-btn" class="w-full flex items-center justify-center bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors shadow disabled:bg-indigo-300">
+                        ✨ Generar Notificación al Cliente
+                    </button>
+                    <div id="email-generation-result" class="mt-4 hidden">
+                        <textarea readonly id="generated-email-textarea" class="w-full h-48 p-2 border rounded-md bg-white font-mono text-sm"></textarea>
+                        <button id="copy-email-btn" class="mt-2 flex items-center justify-center w-full bg-gray-600 text-white px-3 py-1.5 rounded-md hover:bg-gray-700 text-sm">
+                            Copiar al Portapapeles
                         </button>
                     </div>
-                )}
-            </div>
+                </div>
+                <div class="flex justify-end pt-6">
+                    <button id="close-detail-modal-bottom-btn" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">Cerrar</button>
+                </div>
+            `;
+            document.getElementById('detail-modal-content').innerHTML = contentHTML;
+            addDetailModalEventListeners(instrument);
+            detailModal.classList.remove('hidden');
+        }
+
+        // --- Event Listeners ---
+        function addKanbanEventListeners() {
+            document.querySelectorAll('[draggable="true"]').forEach(card => {
+                card.addEventListener('dragstart', e => {
+                    draggedItemId = e.target.dataset.id;
+                });
+                card.addEventListener('click', e => {
+                    const instrument = instruments.find(inst => inst.id === e.currentTarget.dataset.id);
+                    if(instrument) renderDetailModal(instrument);
+                });
+            });
+
+            document.querySelectorAll('.kanban-column').forEach(column => {
+                column.addEventListener('dragover', e => e.preventDefault());
+                column.addEventListener('drop', async e => {
+                    e.preventDefault();
+                    if (draggedItemId) {
+                        const newStatus = e.currentTarget.dataset.status;
+                        await updateInstrumentStatus(draggedItemId, newStatus);
+                        draggedItemId = null;
+                    }
+                });
+            });
+        }
+        
+        function addAgendaEventListeners() {
+            document.getElementById('prev-month-btn').addEventListener('click', () => {
+                currentDate.setMonth(currentDate.getMonth() - 1);
+                render();
+            });
+            document.getElementById('next-month-btn').addEventListener('click', () => {
+                currentDate.setMonth(currentDate.getMonth() + 1);
+                render();
+            });
+            document.querySelectorAll('[data-id]').forEach(el => {
+                 el.addEventListener('click', e => {
+                    const instrument = instruments.find(inst => inst.id === e.currentTarget.dataset.id);
+                    if(instrument) renderDetailModal(instrument);
+                });
+            });
+        }
+        
+        function addDetailModalEventListeners(instrument) {
+            const closeModal = () => detailModal.classList.add('hidden');
+            document.getElementById('close-detail-modal-btn').addEventListener('click', closeModal);
+            document.getElementById('close-detail-modal-bottom-btn').addEventListener('click', closeModal);
+
+            const generateBtn = document.getElementById('generate-email-btn');
+            generateBtn.addEventListener('click', async () => {
+                generateBtn.textContent = 'Generando...';
+                generateBtn.disabled = true;
+                const prompt = `
+                    Actúa como el asistente de comunicaciones del Laboratorio de Calibración Dosimétrica Sievert en Medellín.
+                    Genera un correo electrónico corto, profesional y amigable en español para notificar a un cliente sobre el estado de su equipo.
+                    Datos del Equipo: Cliente: ${instrument.clientName}, ID: ${instrument.instrumentId}, Estado: ${instrument.status}.
+                    El correo debe: 1. Asunto claro. 2. Saludo. 3. Informar estado. 4. Si es "Listo para Despacho", mencionar coordinación de entrega. 5. Si es "Calibrado", mencionar que se procesa el certificado. 6. Despedida cordial.
+                    No incluyas placeholders.`;
+                try {
+                    const emailText = await callGeminiAPI(prompt);
+                    const resultContainer = document.getElementById('email-generation-result');
+                    const textArea = document.getElementById('generated-email-textarea');
+                    textArea.value = emailText;
+                    resultContainer.classList.remove('hidden');
+                } catch(e) {
+                    alert('Error al generar el correo.');
+                } finally {
+                    generateBtn.textContent = '✨ Generar Notificación al Cliente';
+                    generateBtn.disabled = false;
+                }
+            });
             
-            <div className="flex justify-end pt-6">
-                <button type="button" onClick={onClose} className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">Cerrar</button>
-            </div>
-        </Modal>
-    );
-};
+            document.getElementById('copy-email-btn').addEventListener('click', () => {
+                const textArea = document.getElementById('generated-email-textarea');
+                textArea.select();
+                document.execCommand('copy');
+                const btn = document.getElementById('copy-email-btn');
+                btn.textContent = '¡Copiado!';
+                setTimeout(() => { btn.textContent = 'Copiar al Portapapeles'; }, 2000);
+            });
+        }
+
+        // --- Data Functions ---
+        async function updateInstrumentStatus(instrumentId, newStatus) {
+            const instrumentRef = doc(db, /artifacts/${appId}/public/data/instruments, instrumentId);
+            const instrument = instruments.find(inst => inst.id === instrumentId);
+            const newHistoryEntry = { status: newStatus, date: Timestamp.now(), user: userId || 'anonymous' };
+            const updatedHistory = instrument.history ? [...instrument.history, newHistoryEntry] : [newHistoryEntry];
+            try {
+                await updateDoc(instrumentRef, { status: newStatus, lastUpdate: Timestamp.now(), history: updatedHistory });
+            } catch (err) {
+                console.error("Error updating instrument:", err);
+                alert("Error al actualizar el instrumento.");
+            }
+        }
+
+        // --- App Initialization ---
+        function initializeAppLogic() {
+            // View switcher
+            viewKanbanBtn.addEventListener('click', () => {
+                currentView = 'kanban';
+                viewKanbanBtn.classList.add('bg-blue-600', 'text-white', 'shadow');
+                viewAgendaBtn.classList.remove('bg-blue-600', 'text-white', 'shadow');
+                render();
+            });
+            viewAgendaBtn.addEventListener('click', () => {
+                currentView = 'agenda';
+                viewAgendaBtn.classList.add('bg-blue-600', 'text-white', 'shadow');
+                viewKanbanBtn.classList.remove('bg-blue-600', 'text-white', 'shadow');
+                render();
+            });
+
+            // Modal controls
+            const openAddModal = () => addInstrumentModal.classList.remove('hidden');
+            const closeAddModal = () => addInstrumentModal.classList.add('hidden');
+            addInstrumentBtn.addEventListener('click', openAddModal);
+            closeAddModalBtn.addEventListener('click', closeAddModal);
+            cancelAddModalBtn.addEventListener('click', closeAddModal);
+
+            // Add instrument form
+            addInstrumentForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const instrumentId = document.getElementById('instrument-id-input').value;
+                const clientName = document.getElementById('client-name-input').value;
+                const collectionDate = document.getElementById('collection-date-input').value;
+                const deliveryDate = document.getElementById('delivery-date-input').value;
+
+                const newInstrument = {
+                    instrumentId,
+                    clientName,
+                    scheduledCollectionDate: collectionDate ? Timestamp.fromDate(new Date(collectionDate)) : null,
+                    promisedDeliveryDate: deliveryDate ? Timestamp.fromDate(new Date(deliveryDate)) : null,
+                    receptionDate: Timestamp.now(),
+                    lastUpdate: Timestamp.now(),
+                    status: 'En Recepción',
+                    history: [{ status: 'En Recepción', date: Timestamp.now(), user: userId || 'anonymous' }]
+                };
+                try {
+                    await addDoc(collection(db, /artifacts/${appId}/public/data/instruments), newInstrument);
+                    addInstrumentForm.reset();
+                    closeAddModal();
+                } catch (err) {
+                    console.error("Error adding instrument:", err);
+                    alert("Error al añadir el nuevo instrumento.");
+                }
+            });
+            
+            // Suggest date button
+            suggestDateBtn.addEventListener('click', async () => {
+                const btnText = document.getElementById('suggest-date-btn-text');
+                suggestDateBtn.disabled = true;
+                btnText.textContent = '...';
+                const enProcesoCount = instruments.filter(i => i.status === 'En Proceso').length;
+                const enRecepcionCount = instruments.filter(i => i.status === 'En Recepción').length;
+                const prompt = `
+                    Eres un asistente de planificación para un laboratorio de calibración en Medellín, Colombia.
+                    La fecha actual es: ${new Date().toLocaleDateString('es-CO')}.
+                    Carga de trabajo actual: ${enProcesoCount} en proceso, ${enRecepcionCount} en recepción.
+                    Considera un tiempo de calibración promedio de 3 días hábiles y 2 días administrativos.
+                    Sugiere una fecha de entrega realista para un nuevo instrumento.
+                    Responde únicamente con la fecha en formato YYYY-MM-DD.`;
+                try {
+                    const suggestedDate = await callGeminiAPI(prompt);
+                    if (/^\d{4}-\d{2}-\d{2}$/.test(suggestedDate.trim())) {
+                        document.getElementById('delivery-date-input').value = suggestedDate.trim();
+                    } else {
+                        alert("La IA devolvió un formato de fecha no válido.");
+                    }
+                } catch (error) {
+                    alert("Error al contactar al asistente de IA.");
+                } finally {
+                    suggestDateBtn.disabled = false;
+                    btnText.textContent = 'Sugerir';
+                }
+            });
+
+            // Firebase connection
+            try {
+                const app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+
+                onAuthStateChanged(auth, async (user) => {
+                    if (user) {
+                        userId = user.uid;
+                        // Subscribe to data once authenticated
+                        const instrumentsCollectionPath = /artifacts/${appId}/public/data/instruments;
+                        const q = query(collection(db, instrumentsCollectionPath));
+                        onSnapshot(q, (querySnapshot) => {
+                            instruments = [];
+                            querySnapshot.forEach((doc) => {
+                                instruments.push({ id: doc.id, ...doc.data() });
+                            });
+                            render();
+                        }, (err) => {
+                            console.error("Error fetching data:", err);
+                            mainContent.innerHTML = <p class="text-center text-red-500 bg-red-100 p-3 rounded-lg">No se pudieron cargar los datos.</p>;
+                        });
+                    } else {
+                        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                            await signInWithCustomToken(auth, __initial_auth_token);
+                        } else {
+                            await signInAnonymously(auth);
+                        }
+                    }
+                });
+            } catch (e) {
+                console.error("Error initializing Firebase:", e);
+                mainContent.innerHTML = <p class="text-center text-red-500 bg-red-100 p-3 rounded-lg">Error al inicializar la aplicación.</p>;
+            }
+        }
+
+        // Start the app when the DOM is ready
+        document.addEventListener('DOMContentLoaded', initializeAppLogic);
+    </script>
+
+</body>
+</html>
