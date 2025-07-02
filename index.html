@@ -171,10 +171,16 @@
             // --- PASO IMPORTANTE: Configuración de Firebase ---
             // Reemplaza este objeto con la configuración de tu propio proyecto de Firebase.
             // Si dejas el apiKey vacío, la funcionalidad de la base de datos se desactivará.
+           
+
+
             const firebaseConfig = {
-                apiKey: "", // <-- PEGA TU API KEY AQUÍ
-                authDomain: "", // <-- PEGA TU AUTH DOMAIN AQUÍ
-                projectId: "", // <-- PEGA TU PROJECT ID AQUÍ
+                import { defineConfig } from 'vite'
+import solid from 'vite-plugin-solid'
+
+export default defineConfig({
+  plugins: [solid()],
+})
                 storageBucket: "",
                 messagingSenderId: "",
                 appId: ""
