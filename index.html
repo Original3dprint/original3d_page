@@ -126,8 +126,8 @@
                 </div>
                 
                 <div class="flex justify-end pt-4">
-                    <button type="submit" id="save-button" class="bg-blue-600 text-white px-6 py-2 rounded-md font-semibold hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed" disabled>
-                        Conectando...
+                    <button type="submit" id="save-button" class="bg-blue-600 text-white px-6 py-2 rounded-md font-semibold hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">
+                        Guardar Registro
                     </button>
                 </div>
             </form>
@@ -168,6 +168,18 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
+            // --- PASO IMPORTANTE: Configuración de Firebase ---
+            // Reemplaza este objeto con la configuración de tu propio proyecto de Firebase.
+            // Si dejas el apiKey vacío, la funcionalidad de la base de datos se desactivará.
+            const firebaseConfig = {
+                apiKey: "", // <-- PEGA TU API KEY AQUÍ
+                authDomain: "", // <-- PEGA TU AUTH DOMAIN AQUÍ
+                projectId: "", // <-- PEGA TU PROJECT ID AQUÍ
+                storageBucket: "",
+                messagingSenderId: "",
+                appId: ""
+            };
+
             // --- Referencias a elementos del DOM (UI) ---
             const form = document.getElementById('dosis-form');
             const saveButton = document.getElementById('save-button');
@@ -197,7 +209,7 @@
             const modalText = document.getElementById('modal-text');
             const modalCloseBtn = document.getElementById('modal-close-btn');
 
-            // --- LÓGICA CONDICIONAL DE LA UI ---
+            // --- LÓGICA CONDICIONAL DE LA UI (Siempre se ejecuta) ---
             function handleTecnologiaChange() {
                 if (tecnologiaSelect.value === 'OSL') {
                     relecturaContainer.classList.remove('hidden');
@@ -253,7 +265,6 @@
                 }
             }
             
-            // Asignar listeners y estado inicial de la UI
             tecnologiaSelect.addEventListener('change', handleTecnologiaChange);
             ubicacionSelect.addEventListener('change', handleUbicacionChange);
             requiereInformeSelect.addEventListener('change', handleRequiereInformeChange);
@@ -267,44 +278,33 @@
                 modalText.textContent = message;
                 modal.classList.remove('hidden');
             }
-
-            function closeModal() {
-                modal.classList.add('hidden');
-            }
-            modalCloseBtn.addEventListener('click', closeModal);
+            modalCloseBtn.addEventListener('click', () => modal.classList.add('hidden'));
 
             // --- LÓGICA DE FIREBASE Y DATOS ---
-            let dbCollection;
+            let dbCollection = null;
 
-            try {
-                const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
-                if (!firebaseConfig.apiKey) {
-                    throw new Error("La configuración de Firebase no está disponible.");
+            if (firebaseConfig.apiKey) {
+                try {
+                    firebase.initializeApp(firebaseConfig);
+                    const db = firebase.firestore();
+                    const auth = firebase.auth();
+
+                    auth.signInAnonymously().then(userCredential => {
+                        const userId = userCredential.user.uid;
+                        dbCollection = db.collection(`dosis_records/${userId}/records`);
+                        loadRecords(dbCollection);
+                    }).catch(authError => {
+                        console.error("Auth Error:", authError);
+                        showModal("Error de autenticación. La carga y guardado de datos no funcionará.");
+                        loadingIndicator.textContent = "Error de autenticación.";
+                    });
+                } catch (e) {
+                    console.error("Firebase Init Error:", e);
+                    showModal("Error al inicializar Firebase. Verifica que la configuración sea correcta.");
+                    loadingIndicator.textContent = "Error de configuración de Firebase.";
                 }
-                
-                firebase.initializeApp(firebaseConfig);
-                const db = firebase.firestore();
-                const auth = firebase.auth();
-
-                auth.signInAnonymously().then(userCredential => {
-                    const userId = userCredential.user.uid;
-                    const appId = typeof __app_id !== 'undefined' ? __app_id : 'dosis-control-app-default-v2';
-                    dbCollection = db.collection(`artifacts/${appId}/users/${userId}/dosis_records_v2`);
-                    loadRecords(dbCollection);
-                    saveButton.disabled = false;
-                    saveButton.textContent = 'Guardar Registro';
-                }).catch(authError => {
-                    console.error("Auth Error:", authError);
-                    showModal("Error de autenticación. La carga y guardado de datos no funcionará.");
-                    loadingIndicator.textContent = "Error de autenticación.";
-                    saveButton.textContent = 'Error de Conexión';
-                });
-
-            } catch (error) {
-                console.error("Firebase Init Error:", error.message);
-                showModal("Error al conectar con la base de datos. La carga y guardado de datos no funcionará.");
-                loadingIndicator.textContent = "Error de conexión con la base de datos.";
-                saveButton.textContent = 'Error de Conexión';
+            } else {
+                loadingIndicator.textContent = "La base de datos está desactivada. Completa la configuración de Firebase.";
             }
 
             function getBusinessDays(startDate, endDate) {
@@ -374,7 +374,7 @@
             form.addEventListener('submit', async (e) => {
                 e.preventDefault();
                 if (!dbCollection) {
-                    showModal("Error: No hay conexión con la base de datos para guardar.");
+                    showModal("Error: La base de datos no está configurada. Completa el objeto firebaseConfig en el código para guardar.");
                     return;
                 }
                 const newRecord = {
@@ -412,7 +412,7 @@
             tableBody.addEventListener('click', async (e) => {
                 if (e.target.classList.contains('delete-btn')) {
                     if (!dbCollection) {
-                        showModal("Error: No hay conexión con la base de datos para eliminar.");
+                        showModal("Error: La base de datos no está configurada para eliminar.");
                         return;
                     }
                     const id = e.target.getAttribute('data-id');
