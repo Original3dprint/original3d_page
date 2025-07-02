@@ -168,27 +168,7 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            // --- Configuración de Firebase ---
-            const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
-            const appId = typeof __app_id !== 'undefined' ? __app_id : 'dosis-control-app-default-v2';
-            
-            // Inicializar Firebase
-            firebase.initializeApp(firebaseConfig);
-            const db = firebase.firestore();
-            const auth = firebase.auth();
-            let dbCollection;
-
-            // --- Autenticación y Carga de Datos ---
-            auth.signInAnonymously().then(userCredential => {
-                const userId = userCredential.user.uid;
-                dbCollection = db.collection(`artifacts/${appId}/users/${userId}/dosis_records_v2`);
-                loadRecords();
-            }).catch(error => {
-                console.error("Auth Error:", error);
-                showModal("Error de autenticación. Revise la consola.");
-            });
-
-            // --- Referencias a elementos del DOM ---
+            // --- Referencias a elementos del DOM (UI) ---
             const form = document.getElementById('dosis-form');
             const tableBody = document.getElementById('dosis-table-body');
             const loadingIndicator = document.getElementById('loading');
@@ -211,8 +191,12 @@
             const envioInformeInput = document.getElementById('envio-informe');
             const notifStar = document.getElementById('notif-star');
             const envioStar = document.getElementById('envio-star');
+            
+            const modal = document.getElementById('message-modal');
+            const modalText = document.getElementById('modal-text');
+            const modalCloseBtn = document.getElementById('modal-close-btn');
 
-            // --- LÓGICA CONDICIONAL ---
+            // --- LÓGICA CONDICIONAL DE LA UI ---
             function handleTecnologiaChange() {
                 if (tecnologiaSelect.value === 'OSL') {
                     relecturaContainer.classList.remove('hidden');
@@ -267,17 +251,58 @@
                     envioStar.classList.add('hidden');
                 }
             }
-
+            
+            // Asignar listeners y estado inicial de la UI
             tecnologiaSelect.addEventListener('change', handleTecnologiaChange);
             ubicacionSelect.addEventListener('change', handleUbicacionChange);
             requiereInformeSelect.addEventListener('change', handleRequiereInformeChange);
-
-            // Inicializar estado del formulario al cargar
+            
             handleTecnologiaChange();
             handleUbicacionChange();
             handleRequiereInformeChange();
+            
+            // --- Funciones del Modal ---
+            function showModal(message) {
+                modalText.textContent = message;
+                modal.classList.remove('hidden');
+            }
 
-            // --- MANEJO DE DATOS ---
+            function closeModal() {
+                modal.classList.add('hidden');
+            }
+            modalCloseBtn.addEventListener('click', closeModal);
+
+            // --- LÓGICA DE FIREBASE Y DATOS ---
+            let dbCollection;
+
+            try {
+                const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+                // Validar que la configuración no esté vacía antes de inicializar
+                if (!firebaseConfig.apiKey) {
+                    throw new Error("La configuración de Firebase no está disponible.");
+                }
+                
+                firebase.initializeApp(firebaseConfig);
+                const db = firebase.firestore();
+                const auth = firebase.auth();
+
+                auth.signInAnonymously().then(userCredential => {
+                    const userId = userCredential.user.uid;
+                    const appId = typeof __app_id !== 'undefined' ? __app_id : 'dosis-control-app-default-v2';
+                    dbCollection = db.collection(`artifacts/${appId}/users/${userId}/dosis_records_v2`);
+                    loadRecords(dbCollection);
+                }).catch(authError => {
+                    console.error("Auth Error:", authError);
+                    showModal("Error de autenticación. La carga y guardado de datos no funcionará.");
+                    loadingIndicator.textContent = "Error de autenticación.";
+                });
+
+            } catch (error) {
+                console.error("Firebase Init Error:", error.message);
+                showModal("Error al conectar con la base de datos. La carga y guardado de datos no funcionará.");
+                loadingIndicator.textContent = "Error de conexión con la base de datos.";
+            }
+
             function getBusinessDays(startDate, endDate) {
                 let count = 0;
                 const curDate = new Date(startDate.getTime());
@@ -292,7 +317,7 @@
             function renderTable(records) {
                 tableBody.innerHTML = '';
                 loadingIndicator.style.display = records.length === 0 ? 'block' : 'none';
-                if (records.length === 0) loadingIndicator.textContent = 'No hay registros.';
+                if (records.length === 0 && dbCollection) loadingIndicator.textContent = 'No hay registros.';
 
                 records.forEach(record => {
                     const today = new Date();
@@ -330,8 +355,9 @@
                 });
             }
 
-            function loadRecords() {
-                dbCollection.onSnapshot(snapshot => {
+            function loadRecords(collectionRef) {
+                if (!collectionRef) return;
+                collectionRef.onSnapshot(snapshot => {
                     const records = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                     records.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
                     renderTable(records);
@@ -343,6 +369,10 @@
 
             form.addEventListener('submit', async (e) => {
                 e.preventDefault();
+                if (!dbCollection) {
+                    showModal("Error: No hay conexión con la base de datos para guardar.");
+                    return;
+                }
                 const newRecord = {
                     razonSocial: document.getElementById('razon-social').value,
                     nit: document.getElementById('nit').value,
@@ -377,6 +407,10 @@
 
             tableBody.addEventListener('click', async (e) => {
                 if (e.target.classList.contains('delete-btn')) {
+                    if (!dbCollection) {
+                        showModal("Error: No hay conexión con la base de datos para eliminar.");
+                        return;
+                    }
                     const id = e.target.getAttribute('data-id');
                     if (await showConfirmModal("¿Estás seguro de que quieres eliminar este registro?")) {
                         try {
@@ -389,21 +423,6 @@
                     }
                 }
             });
-
-            // --- Funciones del Modal ---
-            const modal = document.getElementById('message-modal');
-            const modalText = document.getElementById('modal-text');
-            const modalCloseBtn = document.getElementById('modal-close-btn');
-
-            function showModal(message) {
-                modalText.textContent = message;
-                modal.classList.remove('hidden');
-            }
-
-            function closeModal() {
-                modal.classList.add('hidden');
-            }
-            modalCloseBtn.addEventListener('click', closeModal);
 
             function showConfirmModal(message) {
                 return new Promise(resolve => {
