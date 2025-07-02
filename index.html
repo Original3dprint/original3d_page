@@ -6,6 +6,12 @@
     <title>Control de Dosis Altas v2</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Carga de SDKs de Firebase -->
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+
     <style>
         body { font-family: 'Inter', sans-serif; }
         input[type="date"]::-webkit-calendar-picker-indicator { cursor: pointer; filter: invert(0.5); }
@@ -160,30 +166,29 @@
         </div>
     </div>
 
-    <script type="module">
-        // Se envuelve todo el código en DOMContentLoaded para asegurar que el HTML esté listo.
+    <script>
         document.addEventListener('DOMContentLoaded', () => {
-            import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-            import { getFirestore, collection, addDoc, onSnapshot, doc, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-            import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-
+            // --- Configuración de Firebase ---
             const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
             const appId = typeof __app_id !== 'undefined' ? __app_id : 'dosis-control-app-default-v2';
-            const app = initializeApp(firebaseConfig);
-            const db = getFirestore(app);
-            const auth = getAuth(app);
+            
+            // Inicializar Firebase
+            firebase.initializeApp(firebaseConfig);
+            const db = firebase.firestore();
+            const auth = firebase.auth();
             let dbCollection;
 
-            signInAnonymously(auth).then(userCredential => {
+            // --- Autenticación y Carga de Datos ---
+            auth.signInAnonymously().then(userCredential => {
                 const userId = userCredential.user.uid;
-                dbCollection = collection(db, `artifacts/${appId}/users/${userId}/dosis_records_v2`);
+                dbCollection = db.collection(`artifacts/${appId}/users/${userId}/dosis_records_v2`);
                 loadRecords();
             }).catch(error => {
                 console.error("Auth Error:", error);
                 showModal("Error de autenticación. Revise la consola.");
             });
 
-            // Referencias a elementos del DOM
+            // --- Referencias a elementos del DOM ---
             const form = document.getElementById('dosis-form');
             const tableBody = document.getElementById('dosis-table-body');
             const loadingIndicator = document.getElementById('loading');
@@ -267,6 +272,7 @@
             ubicacionSelect.addEventListener('change', handleUbicacionChange);
             requiereInformeSelect.addEventListener('change', handleRequiereInformeChange);
 
+            // Inicializar estado del formulario al cargar
             handleTecnologiaChange();
             handleUbicacionChange();
             handleRequiereInformeChange();
@@ -325,11 +331,11 @@
             }
 
             function loadRecords() {
-                onSnapshot(dbCollection, (snapshot) => {
+                dbCollection.onSnapshot(snapshot => {
                     const records = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                     records.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
                     renderTable(records);
-                }, (error) => {
+                }, error => {
                     console.error("Load Error: ", error);
                     showModal("Error al cargar los registros.");
                 });
@@ -357,7 +363,7 @@
                 };
 
                 try {
-                    await addDoc(dbCollection, newRecord);
+                    await dbCollection.add(newRecord);
                     form.reset();
                     handleTecnologiaChange();
                     handleUbicacionChange();
@@ -374,7 +380,7 @@
                     const id = e.target.getAttribute('data-id');
                     if (await showConfirmModal("¿Estás seguro de que quieres eliminar este registro?")) {
                         try {
-                            await deleteDoc(doc(db, dbCollection.path, id));
+                            await dbCollection.doc(id).delete();
                             showModal("Registro eliminado.");
                         } catch (error) {
                             console.error("Delete Error: ", error);
