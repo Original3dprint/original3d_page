@@ -3,515 +3,373 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sievert Control</title>
+    <title>Control de Dosis Altas v2</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        body {
-            font-family: 'Inter', sans-serif;
-        }
-        .modal {
-            transition: opacity 0.3s ease;
-        }
-        .kanban-column {
-            min-height: 200px;
-        }
+        body { font-family: 'Inter', sans-serif; }
+        input[type="date"]::-webkit-calendar-picker-indicator { cursor: pointer; filter: invert(0.5); }
+        .alert-row { background-color: #fef2f2; color: #b91c1c; font-weight: 500; }
+        .alert-row:hover { background-color: #fee2e2; }
+        .table-container { max-height: 50vh; overflow-y: auto; }
+        .mandatory-star { color: #ef4444; }
+        label { font-size: 0.875rem; font-weight: 500; color: #374151; }
+        input:disabled, select:disabled { background-color: #e5e7eb; cursor: not-allowed; }
     </style>
 </head>
-<body class="bg-gray-100 text-gray-800">
+<body class="bg-gray-50 text-gray-800">
 
-    <!-- Header -->
-    <header class="bg-white shadow-md p-4 flex justify-between items-center sticky top-0 z-40">
-        <div class="flex items-center space-x-3">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-blue-600" viewBox="0 0 20 20" fill="currentColor">
-              <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.414-1.414L11 10.586V6z" clip-rule="evenodd" />
-            </svg>
-            <h1 class="text-xl md:text-2xl font-bold text-gray-800">Sievert Control</h1>
-        </div>
-        <div class="flex items-center space-x-2 md:space-x-4">
-            <div class="flex bg-gray-200 rounded-lg p-1">
-                <button id="view-kanban-btn" class="px-3 py-1 text-sm font-medium rounded-md transition-colors bg-blue-600 text-white shadow">
-                    Kanban
-                </button>
-                <button id="view-agenda-btn" class="px-3 py-1 text-sm font-medium rounded-md transition-colors text-gray-600 hover:bg-gray-300">
-                    Agenda
-                </button>
-            </div>
-            <button id="add-instrument-btn" class="flex items-center bg-green-500 text-white px-3 py-2 rounded-lg hover:bg-green-600 transition-colors shadow">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-1" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd" /></svg>
-                <span class="hidden md:inline">Añadir Instrumento</span>
-            </button>
-        </div>
-    </header>
+    <div class="container mx-auto p-4 sm:p-6 lg:p-8">
+        <header class="text-center mb-8">
+            <h1 class="text-3xl font-bold text-gray-900">Panel de Control de Dosis Altas</h1>
+            <p class="text-md text-gray-600 mt-1">Gestión con lógica de negocio y campos condicionales.</p>
+        </header>
 
-    <!-- Main Content -->
-    <main id="main-content" class="p-4 md:p-6">
-        <!-- Content will be rendered here by JavaScript -->
-    </main>
-
-    <!-- Add Instrument Modal -->
-    <div id="add-instrument-modal" class="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50 p-4 hidden">
-        <div class="bg-white rounded-lg shadow-2xl p-6 w-full max-w-md relative max-h-full overflow-y-auto">
-            <button id="close-add-modal-btn" class="absolute top-3 right-3 text-gray-500 hover:text-gray-800 z-10">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
-            </button>
-            <h2 class="text-2xl font-bold mb-4">Añadir Nuevo Instrumento</h2>
-            <form id="add-instrument-form" class="space-y-4">
-                <div>
-                    <label class="block text-sm font-medium text-gray-700">ID del Instrumento</label>
-                    <input type="text" id="instrument-id-input" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2" required />
-                </div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-700">Nombre del Cliente</label>
-                    <input type="text" id="client-name-input" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2" required />
-                </div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-700">Fecha Programada de Recolección</label>
-                    <input type="date" id="collection-date-input" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2" />
-                </div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-700">Fecha Prometida de Entrega</label>
-                    <div class="flex items-center space-x-2">
-                        <input type="date" id="delivery-date-input" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2" />
-                        <button type="button" id="suggest-date-btn" class="mt-1 flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-purple-600 hover:bg-purple-700 disabled:bg-purple-300">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1" viewBox="0 0 20 20" fill="currentColor"><path d="M5 4a2 2 0 012-2h6a2 2 0 012 2v1h-2V4H7v1H5V4zM5 7h10v9a2 2 0 01-2 2H7a2 2 0 01-2-2V7z" /></svg>
-                            <span id="suggest-date-btn-text">Sugerir</span>
-                        </button>
+        <div class="bg-white p-6 rounded-xl shadow-md mb-8">
+            <h2 class="text-xl font-semibold mb-4 text-gray-800">Añadir Nuevo Registro</h2>
+            <form id="dosis-form" class="space-y-6">
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div>
+                        <label for="razon-social">Razón Social <span class="mandatory-star">*</span></label>
+                        <input type="text" id="razon-social" class="mt-1 p-2 w-full border rounded-md" required>
+                    </div>
+                    <div>
+                        <label for="nit">NIT <span class="mandatory-star">*</span></label>
+                        <input type="text" id="nit" class="mt-1 p-2 w-full border rounded-md" required>
+                    </div>
+                    <div>
+                        <label for="periodo">Periodo <span class="mandatory-star">*</span></label>
+                        <input type="text" id="periodo" placeholder="Ej: Julio 2025" class="mt-1 p-2 w-full border rounded-md" required>
+                    </div>
+                    <div>
+                        <label for="usuario">Usuario <span class="mandatory-star">*</span></label>
+                        <input type="text" id="usuario" class="mt-1 p-2 w-full border rounded-md" required>
                     </div>
                 </div>
-                <div class="flex justify-end space-x-3 pt-4">
-                    <button type="button" id="cancel-add-modal-btn" class="bg-gray-200 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-300">Cancelar</button>
-                    <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">Añadir</button>
+
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                    <div>
+                        <label for="tecnologia">Tecnología <span class="mandatory-star">*</span></label>
+                        <select id="tecnologia" class="mt-1 p-2 w-full border rounded-md" required>
+                            <option value="">Seleccionar...</option>
+                            <option value="OSL">OSL</option>
+                            <option value="TLD">TLD</option>
+                        </select>
+                    </div>
+                    <div id="relectura-container" class="hidden">
+                        <label for="relectura">Relectura (OSL)</label>
+                        <input type="number" step="0.01" id="relectura" class="mt-1 p-2 w-full border rounded-md">
+                    </div>
+                     <div>
+                        <label for="ubicacion">Ubicación <span class="mandatory-star">*</span></label>
+                        <select id="ubicacion" class="mt-1 p-2 w-full border rounded-md" required>
+                            <option value="">Seleccionar...</option>
+                            <option value="Tórax">Tórax</option>
+                            <option value="Anillo">Anillo</option>
+                            <option value="Gafas">Gafas</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-4 border-t pt-4">
+                     <div>
+                        <label for="dosis-hp10">Dosis Hp(10) - Tórax <span id="hp10-star" class="mandatory-star hidden">*</span></label>
+                        <input type="number" step="0.01" id="dosis-hp10" class="mt-1 p-2 w-full border rounded-md" disabled>
+                    </div>
+                    <div>
+                        <label for="dosis-hp3">Dosis Hp(3) - Gafas <span id="hp3-star" class="mandatory-star hidden">*</span></label>
+                        <input type="number" step="0.01" id="dosis-hp3" class="mt-1 p-2 w-full border rounded-md" disabled>
+                    </div>
+                    <div>
+                        <label for="dosis-hp007">Dosis Hp(0,07) - Anillo <span id="hp007-star" class="mandatory-star hidden">*</span></label>
+                        <input type="number" step="0.01" id="dosis-hp007" class="mt-1 p-2 w-full border rounded-md" disabled>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end border-t pt-4">
+                    <div>
+                        <label for="envio-correo">Envío correo <span class="mandatory-star">*</span></label>
+                        <input type="date" id="envio-correo" class="mt-1 p-2 w-full border rounded-md" required>
+                    </div>
+                     <div>
+                        <label for="lectura-dosimetro">Lectura dosímetro <span class="mandatory-star">*</span></label>
+                        <input type="date" id="lectura-dosimetro" class="mt-1 p-2 w-full border rounded-md" required>
+                    </div>
+                    <div>
+                        <label for="requiere-informe">Requiere informe</label>
+                        <select id="requiere-informe" class="mt-1 p-2 w-full border rounded-md">
+                            <option value="No">No</option>
+                            <option value="Si">Sí</option>
+                        </select>
+                    </div>
+                </div>
+                 <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div>
+                        <label for="notificacion-informe">Notificación informe <span id="notif-star" class="mandatory-star hidden">*</span></label>
+                        <input type="date" id="notificacion-informe" class="mt-1 p-2 w-full border rounded-md" disabled>
+                    </div>
+                    <div>
+                        <label for="envio-informe">Envío informe <span id="envio-star" class="mandatory-star hidden">*</span></label>
+                        <input type="date" id="envio-informe" class="mt-1 p-2 w-full border rounded-md" disabled>
+                    </div>
+                </div>
+                
+                <div class="flex justify-end pt-4">
+                    <button type="submit" class="bg-blue-600 text-white px-6 py-2 rounded-md font-semibold hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">
+                        Guardar Registro
+                    </button>
                 </div>
             </form>
         </div>
-    </div>
 
-    <!-- Instrument Detail Modal -->
-    <div id="detail-modal" class="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50 p-4 hidden">
-        <div id="detail-modal-content" class="bg-white rounded-lg shadow-2xl p-6 w-full max-w-md relative max-h-full overflow-y-auto">
-            <!-- Details will be rendered here -->
+        <div class="bg-white rounded-xl shadow-md overflow-hidden">
+            <div class="table-container">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-100 sticky top-0">
+                        <tr>
+                            <th class="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase">Razón Social</th>
+                            <th class="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase">Usuario</th>
+                            <th class="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase">Ubicación</th>
+                            <th class="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase">Dosis</th>
+                            <th class="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase">Tec./Relectura</th>
+                            <th class="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase">Notificación</th>
+                            <th class="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase">Envío Informe</th>
+                            <th class="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase">Alerta</th>
+                            <th class="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="dosis-table-body" class="bg-white divide-y divide-gray-200">
+                        </tbody>
+                </table>
+            </div>
+             <div id="loading" class="text-center p-8 text-gray-500">Cargando registros...</div>
         </div>
     </div>
 
-    <!-- Firebase and App Logic -->
     <script type="module">
-        // Firebase SDK imports
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, onSnapshot, doc, addDoc, updateDoc, Timestamp, query } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, collection, addDoc, onSnapshot, doc, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 
-        // --- Configuration ---
-        const firebaseConfig = typeof __firebase_config !== 'undefined' 
-            ? JSON.parse(__firebase_config) 
-            : { apiKey: "your-api-key", authDomain: "your-auth-domain", projectId: "your-project-id" };
+        // Configuración de Firebase (igual que antes)
+        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'dosis-control-app-default-v2';
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+        let dbCollection;
 
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'sievert-control-default';
+        signInAnonymously(auth).then(userCredential => {
+            const userId = userCredential.user.uid;
+            dbCollection = collection(db, `artifacts/${appId}/users/${userId}/dosis_records_v2`);
+            loadRecords();
+        }).catch(error => console.error("Auth Error:", error));
+
+        // Referencias a elementos del DOM
+        const form = document.getElementById('dosis-form');
+        const tableBody = document.getElementById('dosis-table-body');
+        const loadingIndicator = document.getElementById('loading');
         
-        // --- Global State ---
-        let db;
-        let auth;
-        let userId;
-        let instruments = [];
-        let currentView = 'kanban'; // 'kanban' or 'agenda'
-        let currentDate = new Date();
-        let draggedItemId = null;
+        const tecnologiaSelect = document.getElementById('tecnologia');
+        const relecturaContainer = document.getElementById('relectura-container');
+        const relecturaInput = document.getElementById('relectura');
+        
+        const ubicacionSelect = document.getElementById('ubicacion');
+        const dosisHp10Input = document.getElementById('dosis-hp10');
+        const dosisHp3Input = document.getElementById('dosis-hp3');
+        const dosisHp007Input = document.getElementById('dosis-hp007');
 
-        // --- DOM Elements ---
-        const mainContent = document.getElementById('main-content');
-        const viewKanbanBtn = document.getElementById('view-kanban-btn');
-        const viewAgendaBtn = document.getElementById('view-agenda-btn');
-        const addInstrumentBtn = document.getElementById('add-instrument-btn');
-        const addInstrumentModal = document.getElementById('add-instrument-modal');
-        const closeAddModalBtn = document.getElementById('close-add-modal-btn');
-        const cancelAddModalBtn = document.getElementById('cancel-add-modal-btn');
-        const addInstrumentForm = document.getElementById('add-instrument-form');
-        const detailModal = document.getElementById('detail-modal');
-        const suggestDateBtn = document.getElementById('suggest-date-btn');
+        const hp10Star = document.getElementById('hp10-star');
+        const hp3Star = document.getElementById('hp3-star');
+        const hp007Star = document.getElementById('hp007-star');
+        
+        const requiereInformeSelect = document.getElementById('requiere-informe');
+        const notificacionInformeInput = document.getElementById('notificacion-informe');
+        const envioInformeInput = document.getElementById('envio-informe');
+        const notifStar = document.getElementById('notif-star');
+        const envioStar = document.getElementById('envio-star');
 
-        // --- Gemini API Helper ---
-        async function callGeminiAPI(prompt) {
-            const apiKey = ""; // The environment will provide the key
-            const url = https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey};
-            const payload = { contents: [{ role: "user", parts: [{ text: prompt }] }] };
 
-            try {
-                const response = await fetch(url, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-                if (!response.ok) throw new Error(API request failed with status ${response.status});
-                const result = await response.json();
-                if (result.candidates && result.candidates[0]?.content?.parts[0]) {
-                    return result.candidates[0].content.parts[0].text;
-                }
-                return "No se pudo obtener una respuesta válida de la IA.";
-            } catch (error) {
-                console.error("Error calling Gemini API:", error);
-                throw error;
-            }
-        }
+        // --- LÓGICA CONDICIONAL ---
 
-        // --- Rendering Functions ---
-        function render() {
-            mainContent.innerHTML = '<p class="text-center text-lg">Cargando...</p>';
-            if (currentView === 'kanban') {
-                renderKanbanBoard();
+        function handleTecnologiaChange() {
+            if (tecnologiaSelect.value === 'OSL') {
+                relecturaContainer.classList.remove('hidden');
             } else {
-                renderAgendaView();
+                relecturaContainer.classList.add('hidden');
+                relecturaInput.value = '';
             }
         }
 
-        function renderKanbanBoard() {
-            const KANBAN_COLUMNS = [
-                { id: 'En Recepción', title: 'En Recepción' },
-                { id: 'En Proceso', title: 'En Proceso' },
-                { id: 'Calibrado', title: 'Calibrado' },
-                { id: 'Listo para Despacho', title: 'Listo para Despacho' },
-                { id: 'Despachado', title: 'Despachado' },
-            ];
-
-            let boardHTML = '<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">';
-            KANBAN_COLUMNS.forEach(column => {
-                const columnInstruments = instruments.filter(inst => inst.status === column.id);
-                boardHTML += `
-                    <div class="bg-gray-200 rounded-lg p-3 kanban-column" data-status="${column.id}">
-                        <h2 class="font-bold text-lg mb-4 text-gray-700 text-center">${column.title}</h2>
-                        <div class="space-y-3">
-                            ${columnInstruments.map(inst => `
-                                <div class="bg-white p-3 rounded-lg shadow-sm cursor-pointer hover:shadow-md transition-shadow border-l-4 border-blue-500 flex items-start" draggable="true" data-id="${inst.id}">
-                                    <div class="flex-grow">
-                                        <p class="font-semibold text-gray-800">${inst.instrumentId}</p>
-                                        <p class="text-sm text-gray-600">${inst.clientName}</p>
-                                    </div>
-                                    <div class="text-gray-400 cursor-grab">
-                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" /></svg>
-                                    </div>
-                                </div>
-                            `).join('')}
-                        </div>
-                    </div>
-                `;
-            });
-            boardHTML += '</div>';
-            mainContent.innerHTML = boardHTML;
-            addKanbanEventListeners();
-        }
-
-        function renderAgendaView() {
-            const startOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
-            const endOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
-            const startDay = startOfMonth.getDay();
-            const daysInMonth = endOfMonth.getDate();
-            const weekDays = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
-
-            let agendaHTML = `
-                <div class="bg-white p-4 rounded-lg shadow-lg">
-                    <div class="flex justify-between items-center mb-4">
-                        <button id="prev-month-btn" class="p-2 rounded-full hover:bg-gray-200">&lt;</button>
-                        <h2 class="text-xl font-bold">${currentDate.toLocaleString('es-ES', { month: 'long', year: 'numeric' }).replace(/^\w/, c => c.toUpperCase())}</h2>
-                        <button id="next-month-btn" class="p-2 rounded-full hover:bg-gray-200">&gt;</button>
-                    </div>
-                    <div class="grid grid-cols-7 gap-1 text-center font-semibold text-gray-600">
-                        ${weekDays.map(day => <div class="py-2">${day}</div>).join('')}
-                    </div>
-                    <div class="grid grid-cols-7 gap-1">
-            `;
+        function handleUbicacionChange() {
+            const ubicacion = ubicacionSelect.value;
             
-            for (let i = 0; i < startDay; i++) {
-                agendaHTML += '<div class="border rounded-md h-28"></div>';
+            // Resetear todos los campos de dosis
+            [dosisHp10Input, dosisHp3Input, dosisHp007Input].forEach(input => {
+                input.disabled = true;
+                input.required = false;
+                input.value = '';
+            });
+            [hp10Star, hp3Star, hp007Star].forEach(star => star.classList.add('hidden'));
+
+            // Habilitar el campo correspondiente
+            if (ubicacion === 'Tórax') {
+                dosisHp10Input.disabled = false;
+                dosisHp10Input.required = true;
+                hp10Star.classList.remove('hidden');
+            } else if (ubicacion === 'Gafas') {
+                dosisHp3Input.disabled = false;
+                dosisHp3Input.required = true;
+                hp3Star.classList.remove('hidden');
+            } else if (ubicacion === 'Anillo') {
+                dosisHp007Input.disabled = false;
+                dosisHp007Input.required = true;
+                hp007Star.classList.remove('hidden');
             }
-
-            for (let i = 1; i <= daysInMonth; i++) {
-                const day = new Date(currentDate.getFullYear(), currentDate.getMonth(), i);
-                const isToday = day.toDateString() === new Date().toDateString();
-                const events = instruments.filter(inst => {
-                    const collectionDate = inst.scheduledCollectionDate?.toDate();
-                    const deliveryDate = inst.promisedDeliveryDate?.toDate();
-                    return (collectionDate && collectionDate.toDateString() === day.toDateString()) || (deliveryDate && deliveryDate.toDateString() === day.toDateString());
-                });
-
-                agendaHTML += `
-                    <div class="border rounded-md h-32 p-1 overflow-y-auto ${isToday ? 'bg-blue-50' : ''}">
-                        <div class="font-bold ${isToday ? 'text-blue-600' : 'text-gray-700'}">${i}</div>
-                        <div class="space-y-1 mt-1">
-                            ${events.map(event => {
-                                const isCollection = event.scheduledCollectionDate?.toDate().toDateString() === day.toDateString();
-                                return `
-                                    <div data-id="${event.id}" class="text-xs p-1 rounded cursor-pointer ${isCollection ? 'bg-yellow-200 text-yellow-800' : 'bg-green-200 text-green-800'}">
-                                        ${isCollection ? 'Recoger: ' : 'Entregar: '} ${event.instrumentId}
-                                    </div>
-                                `;
-                            }).join('')}
-                        </div>
-                    </div>
-                `;
-            }
-
-            agendaHTML += '</div></div>';
-            mainContent.innerHTML = agendaHTML;
-            addAgendaEventListeners();
         }
         
-        // --- Modal Rendering ---
-        function renderDetailModal(instrument) {
-            const formatDate = (timestamp) => {
-                if (!timestamp) return 'N/A';
-                return timestamp.toDate().toLocaleString('es-CO', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+        function handleRequiereInformeChange() {
+            const requiere = requiereInformeSelect.value;
+            if (requiere === 'Si') {
+                notificacionInformeInput.disabled = false;
+                notificacionInformeInput.required = true;
+                envioInformeInput.disabled = false;
+                envioInformeInput.required = true;
+                notifStar.classList.remove('hidden');
+                envioStar.classList.remove('hidden');
+            } else {
+                notificacionInformeInput.disabled = true;
+                notificacionInformeInput.required = false;
+                notificacionInformeInput.value = '';
+                envioInformeInput.disabled = true;
+                envioInformeInput.required = false;
+                envioInformeInput.value = '';
+                notifStar.classList.add('hidden');
+                envioStar.classList.add('hidden');
+            }
+        }
+
+        // Asignar listeners
+        tecnologiaSelect.addEventListener('change', handleTecnologiaChange);
+        ubicacionSelect.addEventListener('change', handleUbicacionChange);
+        requiereInformeSelect.addEventListener('change', handleRequiereInformeChange);
+
+        // Inicializar estado del formulario al cargar la página
+        handleTecnologiaChange();
+        handleUbicacionChange();
+        handleRequiereInformeChange();
+
+        // --- MANEJO DE DATOS ---
+
+        function getBusinessDays(startDate, endDate) {
+            let count = 0;
+            const curDate = new Date(startDate.getTime());
+            while (curDate <= endDate) {
+                const dayOfWeek = curDate.getDay();
+                if (dayOfWeek !== 0 && dayOfWeek !== 6) count++;
+                curDate.setDate(curDate.getDate() + 1);
+            }
+            return count - 1; 
+        }
+
+        function renderTable(records) {
+            tableBody.innerHTML = '';
+            loadingIndicator.style.display = records.length === 0 ? 'block' : 'none';
+            if (records.length === 0) loadingIndicator.textContent = 'No hay registros.';
+
+            records.forEach(record => {
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                let isAlertActive = false;
+                let alertDays = 0;
+
+                if (record.requiereInforme === 'Si' && record.notificacionInforme && !record.envioInforme) {
+                    const notificacionDate = new Date(record.notificacionInforme + 'T00:00:00');
+                    alertDays = getBusinessDays(notificacionDate, today);
+                    if (alertDays > 10) isAlertActive = true;
+                }
+
+                const dosisValue = record.dosisHp10 || record.dosisHp3 || record.dosisHp007;
+                const tecRelectura = record.tecnologia === 'OSL' ? `OSL / ${record.relectura || 'N/A'}` : 'TLD';
+                
+                const row = document.createElement('tr');
+                row.className = `hover:bg-gray-50 transition-colors ${isAlertActive ? 'alert-row' : ''}`;
+                row.innerHTML = `
+                    <td class="px-4 py-3 text-sm">${record.razonSocial}</td>
+                    <td class="px-4 py-3 text-sm">${record.usuario}</td>
+                    <td class="px-4 py-3 text-sm">${record.ubicacion}</td>
+                    <td class="px-4 py-3 text-sm font-medium">${dosisValue}</td>
+                    <td class="px-4 py-3 text-sm">${tecRelectura}</td>
+                    <td class="px-4 py-3 text-sm">${record.notificacionInforme || 'N/A'}</td>
+                    <td class="px-4 py-3 text-sm">${record.envioInforme || 'Pendiente'}</td>
+                    <td class="px-4 py-3 text-sm font-medium ${isAlertActive ? 'text-red-600' : 'text-green-600'}">
+                        ${isAlertActive ? `Sí (${alertDays} días)` : 'No'}
+                    </td>
+                    <td class="px-4 py-3 text-sm">
+                        <button data-id="${record.id}" class="delete-btn text-red-500 hover:text-red-700">Eliminar</button>
+                    </td>
+                `;
+                tableBody.appendChild(row);
+            });
+        }
+
+        function loadRecords() {
+            onSnapshot(dbCollection, (snapshot) => {
+                const records = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                records.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)); // Mostrar los más nuevos primero
+                renderTable(records);
+            }, (error) => console.error("Load Error: ", error));
+        }
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const newRecord = {
+                razonSocial: document.getElementById('razon-social').value,
+                nit: document.getElementById('nit').value,
+                periodo: document.getElementById('periodo').value,
+                usuario: document.getElementById('usuario').value,
+                tecnologia: tecnologiaSelect.value,
+                relectura: relecturaInput.value,
+                ubicacion: ubicacionSelect.value,
+                dosisHp10: dosisHp10Input.value,
+                dosisHp3: dosisHp3Input.value,
+                dosisHp007: dosisHp007Input.value,
+                envioCorreo: document.getElementById('envio-correo').value,
+                lecturaDosimetro: document.getElementById('lectura-dosimetro').value,
+                requiereInforme: requiereInformeSelect.value,
+                notificacionInforme: notificacionInformeInput.value,
+                envioInforme: envioInformeInput.value,
+                createdAt: new Date().toISOString()
             };
-            
-            const historyHTML = instrument.history ? instrument.history.slice().reverse().map(entry => 
-                <li class="text-sm"><span class="font-semibold">${entry.status}</span> - ${formatDate(entry.date)}</li>
-            ).join('') : '';
 
-            const contentHTML = `
-                <button id="close-detail-modal-btn" class="absolute top-3 right-3 text-gray-500 hover:text-gray-800 z-10">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
-                </button>
-                <h2 class="text-2xl font-bold mb-2">${instrument.instrumentId}</h2>
-                <p class="text-lg text-gray-600 mb-4">${instrument.clientName}</p>
-                <div class="space-y-3 mb-6">
-                    <p><strong>Estado Actual:</strong> <span class="font-semibold text-blue-600">${instrument.status}</span></p>
-                    <p><strong>Fecha de Recepción:</strong> ${formatDate(instrument.receptionDate)}</p>
-                    <p><strong>Última Actualización:</strong> ${formatDate(instrument.lastUpdate)}</p>
-                </div>
-                <div class="bg-gray-50 p-4 rounded-lg">
-                    <button id="generate-email-btn" class="w-full flex items-center justify-center bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors shadow disabled:bg-indigo-300">
-                        ✨ Generar Notificación al Cliente
-                    </button>
-                    <div id="email-generation-result" class="mt-4 hidden">
-                        <textarea readonly id="generated-email-textarea" class="w-full h-48 p-2 border rounded-md bg-white font-mono text-sm"></textarea>
-                        <button id="copy-email-btn" class="mt-2 flex items-center justify-center w-full bg-gray-600 text-white px-3 py-1.5 rounded-md hover:bg-gray-700 text-sm">
-                            Copiar al Portapapeles
-                        </button>
-                    </div>
-                </div>
-                <div class="flex justify-end pt-6">
-                    <button id="close-detail-modal-bottom-btn" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">Cerrar</button>
-                </div>
-            `;
-            document.getElementById('detail-modal-content').innerHTML = contentHTML;
-            addDetailModalEventListeners(instrument);
-            detailModal.classList.remove('hidden');
-        }
-
-        // --- Event Listeners ---
-        function addKanbanEventListeners() {
-            document.querySelectorAll('[draggable="true"]').forEach(card => {
-                card.addEventListener('dragstart', e => {
-                    draggedItemId = e.target.dataset.id;
-                });
-                card.addEventListener('click', e => {
-                    const instrument = instruments.find(inst => inst.id === e.currentTarget.dataset.id);
-                    if(instrument) renderDetailModal(instrument);
-                });
-            });
-
-            document.querySelectorAll('.kanban-column').forEach(column => {
-                column.addEventListener('dragover', e => e.preventDefault());
-                column.addEventListener('drop', async e => {
-                    e.preventDefault();
-                    if (draggedItemId) {
-                        const newStatus = e.currentTarget.dataset.status;
-                        await updateInstrumentStatus(draggedItemId, newStatus);
-                        draggedItemId = null;
-                    }
-                });
-            });
-        }
-        
-        function addAgendaEventListeners() {
-            document.getElementById('prev-month-btn').addEventListener('click', () => {
-                currentDate.setMonth(currentDate.getMonth() - 1);
-                render();
-            });
-            document.getElementById('next-month-btn').addEventListener('click', () => {
-                currentDate.setMonth(currentDate.getMonth() + 1);
-                render();
-            });
-            document.querySelectorAll('[data-id]').forEach(el => {
-                 el.addEventListener('click', e => {
-                    const instrument = instruments.find(inst => inst.id === e.currentTarget.dataset.id);
-                    if(instrument) renderDetailModal(instrument);
-                });
-            });
-        }
-        
-        function addDetailModalEventListeners(instrument) {
-            const closeModal = () => detailModal.classList.add('hidden');
-            document.getElementById('close-detail-modal-btn').addEventListener('click', closeModal);
-            document.getElementById('close-detail-modal-bottom-btn').addEventListener('click', closeModal);
-
-            const generateBtn = document.getElementById('generate-email-btn');
-            generateBtn.addEventListener('click', async () => {
-                generateBtn.textContent = 'Generando...';
-                generateBtn.disabled = true;
-                const prompt = `
-                    Actúa como el asistente de comunicaciones del Laboratorio de Calibración Dosimétrica Sievert en Medellín.
-                    Genera un correo electrónico corto, profesional y amigable en español para notificar a un cliente sobre el estado de su equipo.
-                    Datos del Equipo: Cliente: ${instrument.clientName}, ID: ${instrument.instrumentId}, Estado: ${instrument.status}.
-                    El correo debe: 1. Asunto claro. 2. Saludo. 3. Informar estado. 4. Si es "Listo para Despacho", mencionar coordinación de entrega. 5. Si es "Calibrado", mencionar que se procesa el certificado. 6. Despedida cordial.
-                    No incluyas placeholders.`;
-                try {
-                    const emailText = await callGeminiAPI(prompt);
-                    const resultContainer = document.getElementById('email-generation-result');
-                    const textArea = document.getElementById('generated-email-textarea');
-                    textArea.value = emailText;
-                    resultContainer.classList.remove('hidden');
-                } catch(e) {
-                    alert('Error al generar el correo.');
-                } finally {
-                    generateBtn.textContent = '✨ Generar Notificación al Cliente';
-                    generateBtn.disabled = false;
-                }
-            });
-            
-            document.getElementById('copy-email-btn').addEventListener('click', () => {
-                const textArea = document.getElementById('generated-email-textarea');
-                textArea.select();
-                document.execCommand('copy');
-                const btn = document.getElementById('copy-email-btn');
-                btn.textContent = '¡Copiado!';
-                setTimeout(() => { btn.textContent = 'Copiar al Portapapeles'; }, 2000);
-            });
-        }
-
-        // --- Data Functions ---
-        async function updateInstrumentStatus(instrumentId, newStatus) {
-            const instrumentRef = doc(db, /artifacts/${appId}/public/data/instruments, instrumentId);
-            const instrument = instruments.find(inst => inst.id === instrumentId);
-            const newHistoryEntry = { status: newStatus, date: Timestamp.now(), user: userId || 'anonymous' };
-            const updatedHistory = instrument.history ? [...instrument.history, newHistoryEntry] : [newHistoryEntry];
             try {
-                await updateDoc(instrumentRef, { status: newStatus, lastUpdate: Timestamp.now(), history: updatedHistory });
-            } catch (err) {
-                console.error("Error updating instrument:", err);
-                alert("Error al actualizar el instrumento.");
+                await addDoc(dbCollection, newRecord);
+                form.reset();
+                // Re-inicializar el estado del formulario después de resetear
+                handleTecnologiaChange();
+                handleUbicacionChange();
+                handleRequiereInformeChange();
+                alert("Registro guardado exitosamente.");
+            } catch (error) {
+                console.error("Save Error: ", error);
+                alert("Error al guardar el registro.");
             }
-        }
+        });
 
-        // --- App Initialization ---
-        function initializeAppLogic() {
-            // View switcher
-            viewKanbanBtn.addEventListener('click', () => {
-                currentView = 'kanban';
-                viewKanbanBtn.classList.add('bg-blue-600', 'text-white', 'shadow');
-                viewAgendaBtn.classList.remove('bg-blue-600', 'text-white', 'shadow');
-                render();
-            });
-            viewAgendaBtn.addEventListener('click', () => {
-                currentView = 'agenda';
-                viewAgendaBtn.classList.add('bg-blue-600', 'text-white', 'shadow');
-                viewKanbanBtn.classList.remove('bg-blue-600', 'text-white', 'shadow');
-                render();
-            });
-
-            // Modal controls
-            const openAddModal = () => addInstrumentModal.classList.remove('hidden');
-            const closeAddModal = () => addInstrumentModal.classList.add('hidden');
-            addInstrumentBtn.addEventListener('click', openAddModal);
-            closeAddModalBtn.addEventListener('click', closeAddModal);
-            cancelAddModalBtn.addEventListener('click', closeAddModal);
-
-            // Add instrument form
-            addInstrumentForm.addEventListener('submit', async (e) => {
-                e.preventDefault();
-                const instrumentId = document.getElementById('instrument-id-input').value;
-                const clientName = document.getElementById('client-name-input').value;
-                const collectionDate = document.getElementById('collection-date-input').value;
-                const deliveryDate = document.getElementById('delivery-date-input').value;
-
-                const newInstrument = {
-                    instrumentId,
-                    clientName,
-                    scheduledCollectionDate: collectionDate ? Timestamp.fromDate(new Date(collectionDate)) : null,
-                    promisedDeliveryDate: deliveryDate ? Timestamp.fromDate(new Date(deliveryDate)) : null,
-                    receptionDate: Timestamp.now(),
-                    lastUpdate: Timestamp.now(),
-                    status: 'En Recepción',
-                    history: [{ status: 'En Recepción', date: Timestamp.now(), user: userId || 'anonymous' }]
-                };
-                try {
-                    await addDoc(collection(db, /artifacts/${appId}/public/data/instruments), newInstrument);
-                    addInstrumentForm.reset();
-                    closeAddModal();
-                } catch (err) {
-                    console.error("Error adding instrument:", err);
-                    alert("Error al añadir el nuevo instrumento.");
-                }
-            });
-            
-            // Suggest date button
-            suggestDateBtn.addEventListener('click', async () => {
-                const btnText = document.getElementById('suggest-date-btn-text');
-                suggestDateBtn.disabled = true;
-                btnText.textContent = '...';
-                const enProcesoCount = instruments.filter(i => i.status === 'En Proceso').length;
-                const enRecepcionCount = instruments.filter(i => i.status === 'En Recepción').length;
-                const prompt = `
-                    Eres un asistente de planificación para un laboratorio de calibración en Medellín, Colombia.
-                    La fecha actual es: ${new Date().toLocaleDateString('es-CO')}.
-                    Carga de trabajo actual: ${enProcesoCount} en proceso, ${enRecepcionCount} en recepción.
-                    Considera un tiempo de calibración promedio de 3 días hábiles y 2 días administrativos.
-                    Sugiere una fecha de entrega realista para un nuevo instrumento.
-                    Responde únicamente con la fecha en formato YYYY-MM-DD.`;
-                try {
-                    const suggestedDate = await callGeminiAPI(prompt);
-                    if (/^\d{4}-\d{2}-\d{2}$/.test(suggestedDate.trim())) {
-                        document.getElementById('delivery-date-input').value = suggestedDate.trim();
-                    } else {
-                        alert("La IA devolvió un formato de fecha no válido.");
+        tableBody.addEventListener('click', async (e) => {
+            if (e.target.classList.contains('delete-btn')) {
+                const id = e.target.getAttribute('data-id');
+                if (confirm("¿Estás seguro de que quieres eliminar este registro?")) {
+                    try {
+                        await deleteDoc(doc(db, dbCollection.path, id));
+                    } catch (error) {
+                        console.error("Delete Error: ", error);
+                        alert("Error al eliminar el registro.");
                     }
-                } catch (error) {
-                    alert("Error al contactar al asistente de IA.");
-                } finally {
-                    suggestDateBtn.disabled = false;
-                    btnText.textContent = 'Sugerir';
                 }
-            });
-
-            // Firebase connection
-            try {
-                const app = initializeApp(firebaseConfig);
-                db = getFirestore(app);
-                auth = getAuth(app);
-
-                onAuthStateChanged(auth, async (user) => {
-                    if (user) {
-                        userId = user.uid;
-                        // Subscribe to data once authenticated
-                        const instrumentsCollectionPath = /artifacts/${appId}/public/data/instruments;
-                        const q = query(collection(db, instrumentsCollectionPath));
-                        onSnapshot(q, (querySnapshot) => {
-                            instruments = [];
-                            querySnapshot.forEach((doc) => {
-                                instruments.push({ id: doc.id, ...doc.data() });
-                            });
-                            render();
-                        }, (err) => {
-                            console.error("Error fetching data:", err);
-                            mainContent.innerHTML = <p class="text-center text-red-500 bg-red-100 p-3 rounded-lg">No se pudieron cargar los datos.</p>;
-                        });
-                    } else {
-                        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                            await signInWithCustomToken(auth, __initial_auth_token);
-                        } else {
-                            await signInAnonymously(auth);
-                        }
-                    }
-                });
-            } catch (e) {
-                console.error("Error initializing Firebase:", e);
-                mainContent.innerHTML = <p class="text-center text-red-500 bg-red-100 p-3 rounded-lg">Error al inicializar la aplicación.</p>;
             }
-        }
-
-        // Start the app when the DOM is ready
-        document.addEventListener('DOMContentLoaded', initializeAppLogic);
+        });
     </script>
-
 </body>
 </html>
