@@ -126,8 +126,8 @@
                 </div>
                 
                 <div class="flex justify-end pt-4">
-                    <button type="submit" class="bg-blue-600 text-white px-6 py-2 rounded-md font-semibold hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">
-                        Guardar Registro
+                    <button type="submit" id="save-button" class="bg-blue-600 text-white px-6 py-2 rounded-md font-semibold hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed" disabled>
+                        Conectando...
                     </button>
                 </div>
             </form>
@@ -170,6 +170,7 @@
         document.addEventListener('DOMContentLoaded', () => {
             // --- Referencias a elementos del DOM (UI) ---
             const form = document.getElementById('dosis-form');
+            const saveButton = document.getElementById('save-button');
             const tableBody = document.getElementById('dosis-table-body');
             const loadingIndicator = document.getElementById('loading');
             
@@ -277,7 +278,6 @@
 
             try {
                 const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
-                // Validar que la configuración no esté vacía antes de inicializar
                 if (!firebaseConfig.apiKey) {
                     throw new Error("La configuración de Firebase no está disponible.");
                 }
@@ -291,16 +291,20 @@
                     const appId = typeof __app_id !== 'undefined' ? __app_id : 'dosis-control-app-default-v2';
                     dbCollection = db.collection(`artifacts/${appId}/users/${userId}/dosis_records_v2`);
                     loadRecords(dbCollection);
+                    saveButton.disabled = false;
+                    saveButton.textContent = 'Guardar Registro';
                 }).catch(authError => {
                     console.error("Auth Error:", authError);
                     showModal("Error de autenticación. La carga y guardado de datos no funcionará.");
                     loadingIndicator.textContent = "Error de autenticación.";
+                    saveButton.textContent = 'Error de Conexión';
                 });
 
             } catch (error) {
                 console.error("Firebase Init Error:", error.message);
                 showModal("Error al conectar con la base de datos. La carga y guardado de datos no funcionará.");
                 loadingIndicator.textContent = "Error de conexión con la base de datos.";
+                saveButton.textContent = 'Error de Conexión';
             }
 
             function getBusinessDays(startDate, endDate) {
